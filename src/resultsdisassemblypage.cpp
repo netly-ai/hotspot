@@ -199,3 +199,13 @@ void ResultsDisassemblyPage::setArch(const QString& arch)
 {
     m_arch = arch.trimmed().toLower();
 }
+
+void ResultsDisassemblyPage::changeEvent(QEvent* event)
+{
+    QWidget::changeEvent(event);
+
+    if (event->type() == QEvent::PaletteChange) {
+        m_sourceCodeModel->updateColorTheme();
+        m_disassemblyModel->updateColorTheme();
+    }
+}

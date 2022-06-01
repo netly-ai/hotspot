@@ -8,9 +8,19 @@
 
 #pragma once
 
+#include <memory>
 #include <QAbstractTableModel>
+#include <QTextLine>
+
 #include "data.h"
 #include "disassemblyoutput.h"
+
+class QTextDocument;
+
+namespace KSyntaxHighlighting {
+class SyntaxHighlighter;
+class Repository;
+}
 
 class DisassemblyModel : public QAbstractTableModel
 {
@@ -51,9 +61,14 @@ public:
 
 public slots:
     void updateHighlighting(int line);
+    void updateColorTheme();
 
 private:
+    QTextDocument* m_document;
+    std::unique_ptr<KSyntaxHighlighting::Repository> m_repository;
+    KSyntaxHighlighting::SyntaxHighlighter* m_highlighter = nullptr;
     DisassemblyOutput m_data;
+    QList<QTextLine> m_lines;
     Data::CallerCalleeResults m_results;
     int m_numTypes = 0;
     int m_highlightLine = 0;

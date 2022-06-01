@@ -6,11 +6,30 @@
 */
 
 #include "sourcecodemodel.h"
+#include "hotspot-config.h"
+
 #include <QFile>
+#include <QPalette>
+#include <QTextDocument>
+
+#ifdef KF5SyntaxHighlighting_FOUND
+#include <KSyntaxHighlighting/Definition>
+#include <KSyntaxHighlighting/Repository>
+#include <KSyntaxHighlighting/SyntaxHighlighter>
+#include <KSyntaxHighlighting/Theme>
+#endif
 
 SourceCodeModel::SourceCodeModel(QObject* parent)
     : QAbstractTableModel(parent)
+    , m_document(new QTextDocument(this))
+#ifdef KF5SyntaxHighlighting_FOUND
+    , m_repository(std::make_unique<KSyntaxHighlighting::Repository>())
+    , m_highlighter(new KSyntaxHighlighting::SyntaxHighlighter(m_document))
+#endif
 {
+    qRegisterMetaType<QTextLine>();
+
+    updateColorTheme();
 }
 
 SourceCodeModel::~SourceCodeModel() = default;
@@ -38,7 +57,18 @@ void SourceCodeModel::setDisassembly(const DisassemblyOutput& disassemblyOutput)
     m_costs = {};
     m_costs.initializeCostsFrom(m_callerCalleeResults.selfCosts);
 
-    const auto lines = QString::fromUtf8(file.readAll()).split(QLatin1Char('\n'));
+    const auto sourceCode = QString::fromUtf8(file.readAll());
+
+    const auto lines = sourceCode.split(QLatin1Char('\n'));
+
+    m_document->setPlainText(sourceCode);
+    m_document->setTextWidth(m_document->idealWidth());
+
+#ifdef KF5SyntaxHighlighting_FOUND
+    // if the document is set in the constructor, highlighting doen't work
+    const auto def = m_repository->definitionForFileName(disassemblyOutput.sourceFileName);
+    m_highlighter->setDefinition(def);
+#endif
 
     int maxIndex = 0;
     int minIndex = INT_MAX;
@@ -83,7 +113,8 @@ void SourceCodeModel::setDisassembly(const DisassemblyOutput& disassemblyOutput)
     }
 
     for (int i = minIndex - 1; i < maxIndex + 1; i++) {
-        m_sourceCode.push_back(lines[i]);
+        const auto block = m_document->findBlockByLineNumber(i);
+        m_sourceCode.push_back(block.layout()->lineAt(0));
     }
 
     m_lineOffset = minIndex;
@@ -93,7 +124,7 @@ void SourceCodeModel::setDisassembly(const DisassemblyOutput& disassemblyOutput)
 
 QVariant SourceCodeModel::headerData(int section, Qt::Orientation orientation, int role) const
 {
-    if (section < 0 || section >= COLUMN_COUNT)
+    if (section < 0 || section >= COLUMN_COUNT + m_numTypes)
         return {};
     if (role != Qt::DisplayRole || orientation != Qt::Horizontal)
         return {};
@@ -108,7 +139,7 @@ QVariant SourceCodeModel::headerData(int section, Qt::Orientation orientation, i
         return tr("Highlight");
     }
 
-    if (section - COLUMN_COUNT < m_numTypes) {
+    if (section - COLUMN_COUNT <= m_numTypes) {
         return m_callerCalleeResults.selfCosts.typeName(section - COLUMN_COUNT);
     }
 
@@ -127,7 +158,7 @@ QVariant SourceCodeModel::data(const QModelIndex& index, int role) const
 
     if (role == Qt::DisplayRole || role == Qt::ToolTipRole || role == CostRole || role == TotalCostRole) {
         if (index.column() == SourceCodeColumn)
-            return line;
+            return QVariant::fromValue(line);
 
         if (index.column() == SourceCodeLineNumber) {
             int line = index.row() + m_lineOffset;
@@ -183,4 +214,18 @@ void SourceCodeModel::setCallerCalleeResults(const Data::CallerCalleeResults& re
     m_callerCalleeResults = results;
     m_numTypes = results.selfCosts.numTypes();
     endResetModel();
+}
+
+void SourceCodeModel::updateColorTheme()
+{
+#ifdef KF5SyntaxHighlighting_FOUND
+    KSyntaxHighlighting::Repository::DefaultTheme theme;
+    if (QPalette().base().color().lightness() < 128) {
+        theme = KSyntaxHighlighting::Repository::DarkTheme;
+    } else {
+        theme = KSyntaxHighlighting::Repository::LightTheme;
+    }
+    m_highlighter->setTheme(m_repository->defaultTheme(theme));
+    m_highlighter->rehighlight();
+#endif
 }

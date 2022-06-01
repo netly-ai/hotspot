@@ -6,11 +6,31 @@
     SPDX-License-Identifier: GPL-2.0-or-later
 */
 
-#include "disassemblymodel.h"
+#include <QPalette>
+#include <QTextBlock>
+#include <QTextDocument>
 
-DisassemblyModel::DisassemblyModel(QObject *parent)
+#include "disassemblymodel.h"
+#include "hotspot-config.h"
+
+#include "sourcecodemodel.h"
+
+#ifdef KF5SyntaxHighlighting_FOUND
+#include <KSyntaxHighlighting/Definition>
+#include <KSyntaxHighlighting/Repository>
+#include <KSyntaxHighlighting/SyntaxHighlighter>
+#include <KSyntaxHighlighting/Theme>
+#endif
+
+DisassemblyModel::DisassemblyModel(QObject* parent)
     : QAbstractTableModel(parent)
+    , m_document(new QTextDocument(this))
+#ifdef KF5SyntaxHighlighting_FOUND
+    , m_repository(std::make_unique<KSyntaxHighlighting::Repository>())
+    , m_highlighter(new KSyntaxHighlighting::SyntaxHighlighter(m_document))
+#endif
 {
+    updateColorTheme();
 }
 
 DisassemblyModel::~DisassemblyModel() = default;
@@ -40,6 +60,26 @@ void DisassemblyModel::setDisassembly(const DisassemblyOutput& disassemblyOutput
 {
     beginResetModel();
     m_data = disassemblyOutput;
+    m_lines.clear();
+
+    QString sourceCode;
+
+    for (const auto& it : disassemblyOutput.disassemblyLines) {
+        sourceCode += it.disassembly + QLatin1Char('\n');
+    }
+
+    m_document->setPlainText(sourceCode);
+    m_document->setTextWidth(m_document->idealWidth());
+
+#ifdef KF5SyntaxHighlighting_FOUND
+    const auto def = m_repository->definitionForName(QStringLiteral("GNU Assembler"));
+    m_highlighter->setDefinition(def);
+#endif
+
+    for (auto block = m_document->firstBlock(); block != m_document->lastBlock(); block = block.next()) {
+        m_lines.push_back(block.layout()->lineAt(0));
+    }
+
     endResetModel();
 }
 
@@ -95,7 +135,8 @@ QVariant DisassemblyModel::data(const QModelIndex& index, int role) const
 
     if (role == Qt::DisplayRole || role == CostRole || role == TotalCostRole || role == Qt::ToolTipRole) {
         if (index.column() == DisassemblyColumn)
-            return data.disassembly;
+            return QVariant::fromValue(m_lines[index.row()]);
+        // return data.disassembly;
 
         if (index.column() == LinkedFunctionName)
             return data.linkedFunction.name;
@@ -160,4 +201,18 @@ void DisassemblyModel::updateHighlighting(int line)
 int DisassemblyModel::lineForIndex(const QModelIndex& index)
 {
     return m_data.disassemblyLines[index.row()].sourceCodeLine;
+}
+
+void DisassemblyModel::updateColorTheme()
+{
+#ifdef KF5SyntaxHighlighting_FOUND
+    KSyntaxHighlighting::Repository::DefaultTheme theme;
+    if (QPalette().base().color().lightness() < 128) {
+        theme = KSyntaxHighlighting::Repository::DarkTheme;
+    } else {
+        theme = KSyntaxHighlighting::Repository::LightTheme;
+    }
+    m_highlighter->setTheme(m_repository->defaultTheme(theme));
+    m_highlighter->rehighlight();
+#endif
 }

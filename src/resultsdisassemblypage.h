@@ -52,6 +52,9 @@ public:
 signals:
     void jumpToCallerCallee(const Data::Symbol& symbol);
 
+protected slots:
+    void changeEvent(QEvent* event) override;
+
 private:
     void showDisassembly(const DisassemblyOutput& disassemblyOutput);
 

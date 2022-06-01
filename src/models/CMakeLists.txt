@@ -29,3 +29,7 @@ target_link_libraries(models
     KF5::Parts
     PrefixTickLabels
 )
+
+if (KF5SyntaxHighlighting_FOUND)
+    target_link_libraries(models KF5::SyntaxHighlighting)
+endif(KF5SyntaxHighlighting_FOUND)

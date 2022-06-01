@@ -11,7 +11,18 @@
 #include "data.h"
 #include "disassemblyoutput.h"
 
+#include <memory>
 #include <QAbstractTableModel>
+#include <QTextLine>
+
+class QTextDocument;
+
+namespace KSyntaxHighlighting {
+class SyntaxHighlighter;
+class Repository;
+}
+
+Q_DECLARE_METATYPE(QTextLine);
 
 class SourceCodeModel : public QAbstractTableModel
 {
@@ -49,13 +60,17 @@ public:
 public slots:
     void updateHighlighting(int line);
     void setCallerCalleeResults(const Data::CallerCalleeResults& results);
+    void updateColorTheme();
 
 private:
+    QTextDocument* m_document;
+    std::unique_ptr<KSyntaxHighlighting::Repository> m_repository;
+    KSyntaxHighlighting::SyntaxHighlighter* m_highlighter = nullptr;
     QSet<int> m_validLineNumbers;
+    QList<QTextLine> m_sourceCode;
     Data::CallerCalleeResults m_callerCalleeResults;
     Data::Costs m_costs;
     int m_numTypes = 0;
-    QStringList m_sourceCode;
     int m_lineOffset = 0;
     int m_highlightLine = 0;
 };
